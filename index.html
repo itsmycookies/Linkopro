@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkoPro — Расширенная форма калькулятора</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --text: #1e2a3a;
+      --muted: #5c6977;
+      --brand: #1166ff;
+      --brand-dark: #0d4fcc;
+      --border: #d8e1ee;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+
+    .calculator {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 8px 20px rgba(17, 37, 65, 0.06);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 14px; color: var(--muted); }
+
+    select, input[type='number'] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 15px;
+      color: var(--text);
+      background: #fff;
+    }
+
+    input[type='number']:invalid { border-color: #e34343; }
+
+    .accordion-btn {
+      width: 100%;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      background: var(--brand);
+      cursor: pointer;
+      transition: background .2s ease;
+      margin-bottom: 14px;
+    }
+
+    .accordion-btn:hover:not(:disabled) { background: var(--brand-dark); }
+
+    .accordion-btn:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    .accordion {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows .25s ease;
+      margin-bottom: 18px;
+    }
+
+    .accordion.open { grid-template-rows: 1fr; }
+
+    .accordion-inner {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0 14px;
+    }
+
+    .dynamic-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
+      gap: 12px;
+      padding: 14px 0;
+    }
+
+    .tooltip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #e8eefc;
+      color: var(--brand-dark);
+      font-size: 11px;
+      margin-left: 6px;
+      cursor: help;
+      vertical-align: middle;
+    }
+
+    .totals {
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+      display: grid;
+      gap: 8px;
+      font-size: 16px;
+    }
+
+    .totals strong { font-size: 20px; }
+
+    @media (max-width: 700px) {
+      body { padding: 12px; }
+      .grid, .dynamic-fields { grid-template-columns: 1fr; }
+      .calculator { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="calculator">
+    <h1>Калькулятор шаровых маркеров LinkoPro</h1>
+
+    <div class="grid">
+      <div class="field">
+        <label for="communicationType">Вид коммуникации</label>
+        <select id="communicationType">
+          <option value="">Выберите вид коммуникации</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="trackLength">Длина трассы, м</label>
+        <input id="trackLength" type="number" min="0" value="0" />
+      </div>
+
+      <div class="field">
+        <label for="step">Шаг установки, м</label>
+        <select id="step">
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="toggleAdvanced" class="accordion-btn" type="button" disabled>
+      Расширенная форма
+    </button>
+
+    <section id="accordion" class="accordion" aria-hidden="true">
+      <div class="accordion-inner">
+        <div id="dynamicFields" class="dynamic-fields"></div>
+      </div>
+    </section>
+
+    <section class="totals">
+      <div>Количество маркеров по длине трассы: <span id="baseMarkers">0</span></div>
+      <div>Количество маркеров на ключевые точки: <span id="keyMarkers">0</span></div>
+      <div><strong>Итоговое количество: <span id="totalMarkers">0</span></strong></div>
+    </section>
+  </main>
+
+  <script>
+    const fieldGroups = {
+      energy: [
+        ['Количество поворотов трассы', 'Точки изменения направления кабельной линии.'],
+        ['Количество муфт (все типы)', 'Соединительные, ремонтные, распределительные, транзитные и концевые муфты.'],
+        ['Количество переходов под дорогами и ЖД', 'Переходы в защитных футлярах под транспортной инфраструктурой.'],
+        ['Количество водных переходов', 'Переходы через реки, каналы и иные водные объекты.'],
+        ['Количество входов/выходов в коллекторы и тоннели', 'Точки входа и выхода кабеля в инженерные сооружения.'],
+        ['Количество переходов грунт–труба / труба–грунт', 'Смена способа прокладки на участке трассы.'],
+        ['Количество пересечений с другими коммуникациями', 'Пересечения с сетями иных назначений.'],
+        ['Количество заходов на ПС / РП / ТП', 'Точки подключения к подстанциям и распределительным пунктам.'],
+        ['Количество границ балансовой принадлежности', 'Места смены собственника или зоны ответственности.'],
+        ['Количество участков капитального или аварийного ремонта', 'Участки, где выполнялись ремонтные работы.']
+      ],
+      waterSupply: [
+        ['Количество поворотов трассы', 'Точки изменения направления трубопровода.'],
+        ['Количество врезок / тройников / ответвлений', 'Все точки разветвления и подключения.'],
+        ['Количество колодцев и камер', 'Линейные и узловые сооружения на трассе.'],
+        ['Количество переходов под дорогами и ЖД', 'Переходы через транспортные коридоры.'],
+        ['Количество переходов через водные объекты', 'Переходы через реки, каналы, овраги с водой.'],
+        ['Количество вводов в здания', 'Точки ввода сети в объекты потребления.'],
+        ['Количество пересечений с другими коммуникациями', 'Узлы пересечения с иными инженерными сетями.'],
+        ['Количество участков ГНБ', 'Участки, выполненные методом горизонтально-направленного бурения.'],
+        ['Количество границ эксплуатационной ответственности', 'Точки разграничения обслуживания сети.']
+      ],
+      sewerage: [
+        ['Количество поворотных и перепадных колодцев', 'Колодцы смены направления и перепада отметок.'],
+        ['Количество смотровых колодцев', 'Контрольные точки доступа к сети.'],
+        ['Количество камер', 'Узловые камеры и технологические отсеки.'],
+        ['Количество насосных станций', 'КНС и иные перекачивающие станции.'],
+        ['Количество переходов под дорогами и ЖД', 'Переходы под транспортной инфраструктурой.'],
+        ['Количество переходов через водные объекты', 'Переходы через реки и иные водные объекты.'],
+        ['Количество пересечений с другими коммуникациями', 'Пересечения с сетями смежных служб.'],
+        ['Количество участков ГНБ', 'Участки сети, проложенные ГНБ.'],
+        ['Количество границ эксплуатационной ответственности', 'Границы зон обслуживания.']
+      ],
+      gas: [
+        ['Количество поворотов трассы', 'Участки смены направления газопровода.'],
+        ['Количество врезок / тройников / отводов', 'Все ответвления и врезки в сеть.'],
+        ['Количество запорной арматуры', 'Краны, задвижки, клапаны.'],
+        ['Количество переходов под дорогами и ЖД', 'Переходы под дорожной и железнодорожной инфраструктурой.'],
+        ['Количество переходов через водные объекты', 'Переходы через реки и каналы.'],
+        ['Количество вводов в здания', 'Точки ввода газа в объекты.'],
+        ['Количество изолирующих соединений', 'Элементы электрохимического разделения участков.'],
+        ['Количество участков ЭХЗ (КИП, анодные заземлители)', 'Сегменты с элементами электрохимической защиты.'],
+        ['Количество пересечений с другими коммуникациями', 'Точки пересечения с другими инженерными сетями.'],
+        ['Количество участков ГНБ', 'Сегменты, проложенные методом ГНБ.'],
+        ['Количество границ балансовой принадлежности', 'Границы собственности и ответственности.']
+      ],
+      oil: [
+        ['Количество поворотов трассы', 'Точки изменения направления нефтепровода.'],
+        ['Количество задвижек и камер', 'Арматурные узлы и камеры обслуживания.'],
+        ['Количество насосных станций', 'Станции перекачки по трассе.'],
+        ['Количество переходов под дорогами и ЖД', 'Переходы под транспортной инфраструктурой.'],
+        ['Количество водных переходов', 'Переходы через водные объекты.'],
+        ['Количество пересечений с другими коммуникациями', 'Точки пересечения с внешними сетями.'],
+        ['Количество участков ГНБ', 'Участки с методом прокладки ГНБ.'],
+        ['Количество границ эксплуатационной ответственности', 'Участки разграничения эксплуатации.']
+      ],
+      telecom: [
+        ['Количество муфт ВОЛС', 'Муфты сварки и распределения оптических волокон.'],
+        ['Количество поворотов трассы', 'Точки изменения направления линии связи.'],
+        ['Количество вводов в здания', 'Вводы кабеля в здания и сооружения.'],
+        ['Количество вводов в шкафы / узлы связи', 'Подключения к шкафам и узлам сети связи.'],
+        ['Количество переходов под дорогами и ЖД', 'Переходы под дорожной и ж/д инфраструктурой.'],
+        ['Количество переходов через водные объекты', 'Переходы через водные преграды.'],
+        ['Количество участков ГНБ', 'Участки, выполненные по технологии ГНБ.'],
+        ['Количество пересечений с другими коммуникациями', 'Пересечения с иными инженерными сетями.'],
+        ['Количество границ балансовой принадлежности', 'Места раздела собственности на сеть.']
+      ],
+      ehz: [
+        ['Количество анодных заземлителей', 'Элементы контура электрохимической защиты.'],
+        ['Количество станций катодной защиты', 'Станции СКЗ на защищаемом участке.'],
+        ['Количество КИП', 'Контрольно-измерительные пункты.'],
+        ['Количество точек подключения кабеля ЭХЗ', 'Узлы подключения кабельной сети ЭХЗ.'],
+        ['Количество изолирующих соединений', 'Изолирующие фланцы и соединительные узлы.'],
+        ['Количество пересечений с трубопроводами', 'Участки сближения/пересечения с трубопроводами.'],
+        ['Количество границ зон защиты', 'Границы участков действия ЭХЗ.']
+      ]
+    };
+
+    const communicationNames = {
+      energy: 'Энергетика (КЛ 0,4–500 кВ)',
+      waterSupply: 'Водоснабжение',
+      sewerage: 'Водоотведение',
+      gas: 'Газораспределение',
+      oil: 'Нефтепровод',
+      telecom: 'Связь / ВОЛС',
+      ehz: 'Электрохимическая защита (ЭХЗ)'
+    };
+
+    const els = {
+      communicationType: document.getElementById('communicationType'),
+      trackLength: document.getElementById('trackLength'),
+      step: document.getElementById('step'),
+      toggleAdvanced: document.getElementById('toggleAdvanced'),
+      accordion: document.getElementById('accordion'),
+      dynamicFields: document.getElementById('dynamicFields'),
+      baseMarkers: document.getElementById('baseMarkers'),
+      keyMarkers: document.getElementById('keyMarkers'),
+      totalMarkers: document.getElementById('totalMarkers')
+    };
+
+    Object.entries(communicationNames).forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      els.communicationType.append(option);
+    });
+
+    const sanitizeNumber = (input) => {
+      const value = Number(input.value);
+      if (!Number.isFinite(value) || value < 0) {
+        input.value = '0';
+        return 0;
+      }
+      return value;
+    };
+
+    const calculate = () => {
+      const length = sanitizeNumber(els.trackLength);
+      const step = Number(els.step.value);
+      const baseMarkers = step > 0 ? Math.ceil(length / step) : 0;
+
+      let keyMarkers = 0;
+      els.dynamicFields.querySelectorAll('input[type="number"]').forEach((input) => {
+        keyMarkers += sanitizeNumber(input);
+      });
+
+      els.baseMarkers.textContent = String(baseMarkers);
+      els.keyMarkers.textContent = String(keyMarkers);
+      els.totalMarkers.textContent = String(baseMarkers + keyMarkers);
+    };
+
+    const buildDynamicFields = (type) => {
+      els.dynamicFields.innerHTML = '';
+      const fields = fieldGroups[type] ?? [];
+
+      fields.forEach(([labelText, tooltip], index) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'field';
+
+        const label = document.createElement('label');
+        label.setAttribute('for', `extra-${index}`);
+        label.innerHTML = `${labelText}<span class="tooltip" title="${tooltip}">?</span>`;
+
+        const input = document.createElement('input');
+        input.id = `extra-${index}`;
+        input.type = 'number';
+        input.min = '0';
+        input.value = '0';
+        input.addEventListener('input', calculate);
+
+        wrap.append(label, input);
+        els.dynamicFields.append(wrap);
+      });
+    };
+
+    const resetAdvancedForm = () => {
+      els.accordion.classList.remove('open');
+      els.accordion.setAttribute('aria-hidden', 'true');
+      buildDynamicFields(els.communicationType.value);
+      calculate();
+    };
+
+    els.communicationType.addEventListener('change', () => {
+      const selected = els.communicationType.value;
+      els.toggleAdvanced.disabled = !selected;
+      resetAdvancedForm();
+    });
+
+    els.toggleAdvanced.addEventListener('click', () => {
+      if (els.toggleAdvanced.disabled) return;
+      els.accordion.classList.toggle('open');
+      els.accordion.setAttribute('aria-hidden', String(!els.accordion.classList.contains('open')));
+    });
+
+    [els.trackLength, els.step].forEach((el) => el.addEventListener('input', calculate));
+    calculate();
+  </script>
+</body>
+</html>
